@@ -1,96 +1,113 @@
-# Binance Futures Testnet Trading Bot
+# ⚡ Binance Futures Testnet Trading Bot
 
-A simplified, robust Python trading bot designed to place Market and Limit orders on the **Binance Futures Testnet (USDT-M)**. It features strict client-side validation, clean dual-destination logging, error handling, and a highly polished interactive CLI mode.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.8+-blue.svg" alt="Python Version">
+  <img src="https://img.shields.io/badge/Binance-Futures--Testnet-orange.svg" alt="Binance Futures">
+  <img src="https://img.shields.io/badge/Licence-MIT-green.svg" alt="License">
+</p>
 
----
-
-## Features
-
-- **Order Types**: Supports `MARKET`, `LIMIT`, and `STOP_MARKET` (Bonus) order types.
-- **Dual Side Support**: Seamlessly executes both `BUY` (Long) and `SELL` (Short) trades.
-- **Two CLI Modes**:
-  - **Direct Arguments**: Fast execution via command-line flags.
-  - **Interactive CLI Menu**: A guided, step-by-step user interface with real-time input validation and confirmation prompts.
-- **Time Synchronization**: Automatically fetches server time from Binance to align local system clock offset, eliminating `recvWindow` errors.
-- **Comprehensive Logging**:
-  - **Stdout (Console)**: Clean, color-coded, user-friendly indicators (`[SUCCESS]`, `[ERROR]`, `[INFO]`).
-  - **File (`trading_bot.log`)**: Full DEBUG-level traceability containing API URLs, payload parameters, headers, signing details, responses, and network tracebacks.
-- **Fail-Safe Validation**: Checks symbols, quantity sizes, sides, and prices before submitting to minimize API overhead and rate-limit penalties.
+An advanced, production-ready Python trading bot designed to place and manage orders on the **Binance Futures Testnet (USDT-M)**. Features client-side validation filters, real-time time synchronization, auto-precision rounding, and a highly polished interactive CLI terminal cockpit.
 
 ---
 
-## Setup Instructions
+## ✨ Key Features
+
+- 📈 **Supported Orders**: Seamlessly place `MARKET`, `LIMIT`, and `STOP_MARKET` orders.
+- 🔄 **Dual-Side Trading**: Fully supports both `BUY` (Long) and `SELL` (Short) sides.
+- 🎯 **Smart Exchange-Filter Auto-Rounding**: Automatically queries `GET /fapi/v1/exchangeInfo` on startup to round quantity and price decimals to match the symbol's exact constraints (`LOT_SIZE` and `PRICE_FILTER`), eliminating API filter rejections.
+- 📡 **Real-Time Order Tracking**: Option to poll order status every 2 seconds with an inline progress loader until the order is `FILLED`, `CANCELED`, or `EXPIRED`.
+- 🛑 **Graceful Cancellation Hook**: Interrupting live tracking (`Ctrl+C`) prompts the user and allows them to instantly cancel the active resting order on the exchange.
+- ⏰ **Drift Protection**: Automatically fetches Binance server time to calculate and adjust for local clock drift, eliminating `recvWindow` signature errors.
+- 📝 **Dual-Destination Logging**:
+  - **Console**: Clean, colorized status banners (`[SUCCESS]`, `[ERROR]`, `[INFO]`).
+  - **File (`trading_bot.log`)**: Full traceback logs with query payloads, headers, signed signatures, and raw JSON responses.
+
+---
+
+## 🛠️ Quick Start
 
 ### 1. Prerequisites
-Ensure you have Python 3.8+ installed on your system.
+Make sure you have Python 3.8+ installed.
 
-### 2. Clone and Install Dependencies
-Navigate to the project root and install the required packages:
+### 2. Install Dependencies
+Clone the repository and install requirements:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Obtain API Credentials
-1. Register and sign in to the [Binance Futures Testnet](https://testnet.binancefuture.com).
-2. Generate an API Key and Secret Key from the testnet dashboard.
-
-### 4. Configure Environment Variables
-Copy `.env.example` to a new file named `.env`:
+### 3. Configure API Credentials
+Create a `.env` file in the project root:
 ```bash
 copy .env.example .env
 ```
-Open `.env` and fill in your keys:
+Fill in your credentials from the [Binance Futures Testnet](https://testnet.binancefuture.com) dashboard:
 ```env
 BINANCE_API_KEY=your_testnet_api_key_here
 BINANCE_API_SECRET=your_testnet_api_secret_here
 ```
-*Note: If the application does not find `.env` or system environment keys, it will prompt you interactively to input them and offer to save them automatically.*
+
+> [!TIP]
+> **No Credentials? Use Simulation Mode!**
+> If you leave `BINANCE_API_KEY=MOCK` and `BINANCE_API_SECRET=MOCK` in `.env`, the bot will automatically enter **Simulation Mode**—generating realistic mocked responses and tracking loops completely locally.
 
 ---
 
-## How to Run (Examples)
+## 🚀 Usage Guide
 
-### 1. Test Connectivity
-Verify that your API keys are valid and the Binance server is reachable:
-```bash
-python cli.py --test-connection
-```
+The application supports both a guided interactive terminal menu and direct command-line execution flags.
 
-### 2. Interactive CLI Mode (Recommended)
-Simply run the script without any parameters to launch the interactive interface:
+### 1. Interactive Cockpit (Recommended)
+Simply launch the bot without any parameters:
 ```bash
 python cli.py
 ```
-This mode will guide you through:
-- Choosing/confirming the symbol (default: `BTCUSDT`)
-- Selecting order side (`BUY` / `SELL`)
-- Selecting order type (`MARKET` / `LIMIT` / `STOP_MARKET`)
-- Validating your input quantity and price
-- Displaying a summary card and requesting confirmation before placing the trade.
-- **Interactive Tracking**: Prompts you to track the order in real-time if it rests on the book (LIMIT or STOP_MARKET). You can stop tracking at any time with `Ctrl+C` and instantly cancel the order on the exchange.
+This guides you step-by-step through choosing the symbol, side, type, quantity, and price with real-time input validations and confirmation cards.
 
-### 3. Direct Command-Line Arguments
+---
+
+### 2. Direct CLI Commands
+You can run trades directly by passing flags:
+
+| Flag | Short | Type | Description |
+| :--- | :--- | :--- | :--- |
+| `--symbol` | `-s` | String | Alphanumeric symbol (e.g. `BTCUSDT`) |
+| `--side` | `-d` | Choices | Order side (`BUY`, `SELL`) |
+| `--type` | `-t` | Choices | Order type (`MARKET`, `LIMIT`, `STOP_MARKET`) |
+| `--qty` | `-q` | Float | Quantity (Auto-rounded to exchange step size) |
+| `--price` | `-p` | Float | Limit price (Auto-rounded, required for `LIMIT`) |
+| `--stop-price` | `-sp`| Float | Stop trigger price (Required for `STOP_MARKET`) |
+| `--track` | `-tr` | Flag | Enable real-time order tracking and polling |
+| `--test-connection`| `-tc`| Flag | Verify API keys and synchronize server time |
 
 #### Place a MARKET Order:
 ```bash
 python cli.py --symbol BTCUSDT --side BUY --type MARKET --qty 0.001
 ```
 
-#### Place a LIMIT Order with Real-Time Tracking:
+#### Place a LIMIT Order with Live Tracking:
 ```bash
-python cli.py --symbol BTCUSDT --side BUY --type LIMIT --qty 0.001 --price 60000 --track
-```
-
-#### Place a STOP_MARKET Order (Bonus Type):
-```bash
-python cli.py --symbol BTCUSDT --side SELL --type STOP_MARKET --qty 0.002 --stop-price 59500
+python cli.py --symbol BTCUSDT --side BUY --type LIMIT --qty 0.00123 --price 60000.125 --track
 ```
 
 ---
 
-## Assumptions and Design Decisions
+## 📐 Architecture & Design Decisions
 
-1. **Direct REST Integration**: Handled using `requests` to guarantee absolute control over requests/response cycles, logging formats, signing algorithms, and to avoid external dependency drift of full wrapper libraries.
-2. **USDT-M Margin Default**: The endpoint uses `https://testnet.binancefuture.com` which aligns with USDS-M contract parameters (`/fapi/v1/order`).
-3. **Smart Exchange Filter Auto-Rounding**: To prevent `LOT_SIZE` and `PRICE_FILTER` rejections, the application queries `GET /fapi/v1/exchangeInfo` on startup and dynamically rounds/quantizes the quantity and price inputs to match the symbol's exact step size requirements.
-4. **Time Sync Offset**: Server and local timestamps are aligned during initialization by fetching `/fapi/v1/time` to prevent clock-drift issues.
+```mermaid
+graph TD
+    A[cli.py CLI Entrypoint] --> B{Interactive or Args?}
+    B -->|Interactive| C[Interactive UI Wizard]
+    B -->|Direct Args| D[Argument Parser]
+    C --> E[bot/validators.py Parameter Verification]
+    D --> E
+    E --> F[bot/orders.py Orchestrator]
+    F --> G[bot/client.py API Client]
+    G -->|Sync Server Time| H[GET /fapi/v1/time]
+    G -->|Fetch Constraints| I[GET /fapi/v1/exchangeInfo]
+    G -->|Place Trade| J[POST /fapi/v1/order]
+    F -->|Start Loop| K[Real-time Polling Loop / Ctrl+C Cancel Hook]
+```
+
+1. **Direct REST Implementation**: Uses raw `requests` calls for fine-grained control over payload signatures and to bypass external library maintenance issues.
+2. **Auto-Rounding Step quantizer**: Financial calculations use Python's `decimal` module to prevent float approximation errors when formatting order strings for the exchange filters.
+3. **Double Logging Isolation**: Kept standard outputs clean and pretty while capturing full API payloads (masking API keys for security) in the debug log file.
