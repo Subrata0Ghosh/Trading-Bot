@@ -1,0 +1,13 @@
+# Environment variables (sensitive API keys)
+.env
+
+# Log files
+*.log
+
+# Python cache files
+__pycache__/
+bot/__pycache__/
+
+# IDE folders
+.vscode/
+.idea/
