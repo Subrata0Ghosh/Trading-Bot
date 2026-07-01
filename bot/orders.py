@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal, ROUND_DOWN
 from bot.client import BinanceFuturesClient, BinanceAPIException
 from bot.validators import (
     validate_symbol,
@@ -10,6 +11,19 @@ from bot.validators import (
 )
 
 logger = logging.getLogger(__name__)
+
+def round_to_step(value, step_size) -> float:
+    """
+    Rounds a float/Decimal value down to the nearest multiple of step_size.
+    E.g. round_to_step(0.00532, 0.001) -> 0.005
+    """
+    if value is None:
+        return None
+    d_val = Decimal(str(value))
+    d_step = Decimal(str(step_size))
+    remainder = d_val % d_step
+    rounded = d_val - remainder
+    return float(rounded.quantize(d_step, rounding=ROUND_DOWN))
 
 def execute_futures_order(
     client: BinanceFuturesClient,
@@ -33,7 +47,35 @@ def execute_futures_order(
     v_price = validate_price(price, v_type)
     v_stop_price = validate_stop_price(stop_price, v_type)
 
-    # 2. Print order request summary
+    # 2. Fetch symbol exchange filters and auto-round to avoid LOT_SIZE / PRICE_FILTER rejections
+    try:
+        filters = client.get_symbol_filters(v_symbol)
+        step_size = filters.get("stepSize")
+        tick_size = filters.get("tickSize")
+        
+        # Round quantity
+        rounded_qty = round_to_step(v_qty, step_size)
+        if rounded_qty != v_qty:
+            logger.info(f"Auto-rounding quantity from {v_qty} to {rounded_qty} to match LOT_SIZE filter ({step_size})")
+            v_qty = rounded_qty
+            
+        # Round price
+        if v_price is not None:
+            rounded_price = round_to_step(v_price, tick_size)
+            if rounded_price != v_price:
+                logger.info(f"Auto-rounding price from {v_price} to {rounded_price} to match PRICE_FILTER filter ({tick_size})")
+                v_price = rounded_price
+                
+        # Round stop price
+        if v_stop_price is not None:
+            rounded_stop = round_to_step(v_stop_price, tick_size)
+            if rounded_stop != v_stop_price:
+                logger.info(f"Auto-rounding stop price from {v_stop_price} to {rounded_stop} to match PRICE_FILTER filter ({tick_size})")
+                v_stop_price = rounded_stop
+    except Exception as fe:
+        logger.warning(f"Could not apply exchange info precision filters: {fe}. Proceeding with raw values.")
+
+    # 3. Print order request summary
     logger.info("=" * 40)
     logger.info("ORDER REQUEST SUMMARY")
     logger.info("=" * 40)
@@ -47,11 +89,11 @@ def execute_futures_order(
         logger.info(f"Stop Price: {v_stop_price}")
     logger.info("=" * 40)
 
-    # 3. Synchronize time if needed
+    # 4. Synchronize time if needed
     if not client.sync_time_done:
         client.sync()
 
-    # 4. Place order
+    # 5. Place order
     logger.info("Submitting order to Binance Futures Testnet...")
     try:
         raw_response = client.place_order(
@@ -63,7 +105,7 @@ def execute_futures_order(
             stop_price=v_stop_price,
         )
         
-        # 5. Extract core details for the user
+        # 6. Extract core details for the user
         order_id = raw_response.get("orderId")
         status = raw_response.get("status")
         executed_qty = raw_response.get("executedQty", "0.0")

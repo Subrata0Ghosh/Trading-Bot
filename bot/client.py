@@ -23,6 +23,7 @@ class BinanceFuturesClient:
         })
         self.time_offset = 0
         self.sync_time_done = False
+        self._exchange_info_cache = None
         # Determine if we are in mock simulation mode
         self.is_mock = (
             self.api_key.lower().strip() == "mock" or 
@@ -180,15 +181,19 @@ class BinanceFuturesClient:
                         "status": "CANCELED"
                     }
                 elif method.upper() == "GET":
+                    # Simulate dynamic filling: fills after ~5 seconds depending on seconds modulo
+                    is_filled = (int(time.time()) % 10) > 4
+                    qty = "0.005"
                     mock_response_body = {
                         "orderId": int(req_params.get("orderId", 12831923812)),
                         "symbol": req_params.get("symbol", "BTCUSDT"),
-                        "status": "NEW",
-                        "price": "0.0",
-                        "origQty": "0.0",
-                        "executedQty": "0.0",
+                        "status": "FILLED" if is_filled else "NEW",
+                        "price": "59000.0",
+                        "origQty": qty,
+                        "executedQty": qty if is_filled else "0.0",
                         "type": "LIMIT",
-                        "side": "BUY"
+                        "side": "BUY",
+                        "updateTime": int(time.time() * 1000)
                     }
             
             logger.debug(f"API Response Code: {mock_status_code} (Simulated)")
@@ -245,6 +250,58 @@ class BinanceFuturesClient:
         Current exchange trading rules and symbol information.
         """
         return self._request("GET", "/fapi/v1/exchangeInfo")
+
+    def get_symbol_filters(self, symbol: str) -> dict:
+        """
+        Retrieves precision, tick size, step size, and min notional rules for a symbol.
+        Uses caching to avoid fetching huge exchangeInfo payloads multiple times.
+        """
+        symbol = symbol.upper().strip()
+
+        if self.is_mock:
+            return {
+                "pricePrecision": 2,
+                "quantityPrecision": 3,
+                "tickSize": "0.01",
+                "stepSize": "0.001",
+                "minNotional": "5.0"
+            }
+
+        # Fetch and cache exchangeInfo if not already done
+        if not self._exchange_info_cache:
+            logger.debug("Fetching exchange information from Binance...")
+            self._exchange_info_cache = self.get_exchange_info()
+
+        # Find symbol rules
+        symbol_info = None
+        for s in self._exchange_info_cache.get("symbols", []):
+            if s.get("symbol") == symbol:
+                symbol_info = s
+                break
+
+        if not symbol_info:
+            raise ValueError(f"Symbol '{symbol}' not found in Binance exchange rules.")
+
+        # Default filters fallback
+        filters = {
+            "pricePrecision": symbol_info.get("pricePrecision", 2),
+            "quantityPrecision": symbol_info.get("quantityPrecision", 3),
+            "tickSize": "0.01",
+            "stepSize": "0.001",
+            "minNotional": "5.0"
+        }
+
+        # Parse filters list
+        for f in symbol_info.get("filters", []):
+            f_type = f.get("filterType")
+            if f_type == "PRICE_FILTER":
+                filters["tickSize"] = f.get("tickSize", "0.01")
+            elif f_type == "LOT_SIZE":
+                filters["stepSize"] = f.get("stepSize", "0.001")
+            elif f_type == "MIN_NOTIONAL":
+                filters["minNotional"] = f.get("notional", "5.0")
+
+        return filters
 
     def place_order(self, symbol: str, side: str, order_type: str, quantity: float, price: float = None, stop_price: float = None) -> dict:
         """

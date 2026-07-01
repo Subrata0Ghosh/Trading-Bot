@@ -67,6 +67,7 @@ This mode will guide you through:
 - Selecting order type (`MARKET` / `LIMIT` / `STOP_MARKET`)
 - Validating your input quantity and price
 - Displaying a summary card and requesting confirmation before placing the trade.
+- **Interactive Tracking**: Prompts you to track the order in real-time if it rests on the book (LIMIT or STOP_MARKET). You can stop tracking at any time with `Ctrl+C` and instantly cancel the order on the exchange.
 
 ### 3. Direct Command-Line Arguments
 
@@ -75,9 +76,9 @@ This mode will guide you through:
 python cli.py --symbol BTCUSDT --side BUY --type MARKET --qty 0.001
 ```
 
-#### Place a LIMIT Order:
+#### Place a LIMIT Order with Real-Time Tracking:
 ```bash
-python cli.py --symbol BTCUSDT --side BUY --type LIMIT --qty 0.001 --price 60000
+python cli.py --symbol BTCUSDT --side BUY --type LIMIT --qty 0.001 --price 60000 --track
 ```
 
 #### Place a STOP_MARKET Order (Bonus Type):
@@ -91,5 +92,5 @@ python cli.py --symbol BTCUSDT --side SELL --type STOP_MARKET --qty 0.002 --stop
 
 1. **Direct REST Integration**: Handled using `requests` to guarantee absolute control over requests/response cycles, logging formats, signing algorithms, and to avoid external dependency drift of full wrapper libraries.
 2. **USDT-M Margin Default**: The endpoint uses `https://testnet.binancefuture.com` which aligns with USDS-M contract parameters (`/fapi/v1/order`).
-3. **Price Precision & Step Sizes**: Real exchange orders are subject to tick size and lot size limitations (e.g. BTCUSDT requires specific step size decimals). We assume the user inputs values conforming to these limits. (In case of mismatch, the Binance API returns a clear error code which is printed and logged).
+3. **Smart Exchange Filter Auto-Rounding**: To prevent `LOT_SIZE` and `PRICE_FILTER` rejections, the application queries `GET /fapi/v1/exchangeInfo` on startup and dynamically rounds/quantizes the quantity and price inputs to match the symbol's exact step size requirements.
 4. **Time Sync Offset**: Server and local timestamps are aligned during initialization by fetching `/fapi/v1/time` to prevent clock-drift issues.

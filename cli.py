@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+import time
 import logging
 from dotenv import load_dotenv
 
@@ -71,6 +72,43 @@ def load_credentials_or_prompt():
     except KeyboardInterrupt:
         print(f"\n{RED}Operation cancelled.{RESET}")
         sys.exit(1)
+
+def track_order_status(client: BinanceFuturesClient, symbol: str, order_id: int):
+    """
+    Polls the order status in real-time, displays progress, and handles Ctrl+C to cancel the order.
+    """
+    print(f"\n{YELLOW}{BOLD}[TRACKING] Started tracking order {order_id}...{RESET}")
+    print("Press Ctrl+C to stop tracking and choose options to cancel the order.")
+    
+    try:
+        while True:
+            # Query status
+            status_res = client.get_order_status(symbol, order_id)
+            status = status_res.get("status")
+            executed_qty = status_res.get("executedQty", "0.0")
+            orig_qty = status_res.get("origQty", "0.0")
+            
+            # Print status line and rewrite it
+            sys.stdout.write(f"\r{CYAN}[TRACKING] Status: {status} | Filled: {executed_qty} / {orig_qty} {symbol}{RESET}")
+            sys.stdout.flush()
+            
+            if status in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
+                print(f"\n\n{GREEN}{BOLD}[SUCCESS] Order tracking complete. Final Status: {status}{RESET}\n")
+                break
+                
+            time.sleep(2)
+    except KeyboardInterrupt:
+        print(f"\n\n{YELLOW}[!] Order tracking stopped by user.{RESET}")
+        cancel_choice = input(f"{CYAN}Would you like to cancel this active order on the exchange? (y/n) [y]: {RESET}").strip().lower()
+        if cancel_choice not in ("n", "no"):
+            print(f"{YELLOW}Cancelling order {order_id} on the exchange...{RESET}")
+            try:
+                cancel_res = client.cancel_order(symbol, order_id)
+                print(f"{GREEN}{BOLD}[SUCCESS] Order {order_id} cancelled! (Status: {cancel_res.get('status')}){RESET}\n")
+            except Exception as ce:
+                print(f"{RED}Failed to cancel order: {ce}{RESET}\n")
+        else:
+            print(f"{YELLOW}Order {order_id} left active on exchange.{RESET}\n")
 
 def run_interactive_mode(client: BinanceFuturesClient):
     """
@@ -181,7 +219,7 @@ def run_interactive_mode(client: BinanceFuturesClient):
         confirm = input(f"{CYAN}Do you want to submit this order? (yes/no) [yes]: {RESET}").strip().lower()
         if confirm in ("", "y", "yes"):
             try:
-                execute_futures_order(
+                res = execute_futures_order(
                     client=client,
                     symbol=symbol,
                     side=side,
@@ -190,6 +228,12 @@ def run_interactive_mode(client: BinanceFuturesClient):
                     price=price,
                     stop_price=stop_price,
                 )
+                
+                # If order is LIMIT/STOP_MARKET and not filled instantly, prompt to track
+                if res and res.get("status") not in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
+                    track_choice = input(f"{CYAN}Would you like to track this order's execution status in real-time? (y/n) [y]: {RESET}").strip().lower()
+                    if track_choice not in ("n", "no"):
+                        track_order_status(client, symbol, res.get("orderId"))
             except Exception as e:
                 # The exception detail has already been logged, we show a clean console error
                 print(f"\n{RED}{BOLD}[!] Order execution failed: {e}{RESET}\n")
@@ -213,6 +257,7 @@ def main():
     parser.add_argument("--stop-price", type=float, help="Trigger price (required for STOP_MARKET)")
     parser.add_argument("--test-connection", action="store_true", help="Pings the server and verifies connectivity")
     parser.add_argument("--interactive", "-i", action="store_true", help="Launch interactive prompts")
+    parser.add_argument("--track", "-t", action="store_true", help="Track order status in real-time until filled or cancelled")
 
     args = parser.parse_args()
 
@@ -248,7 +293,7 @@ def main():
         # Standard argument-based execution
         try:
             # Let validators handle case conversion and checks
-            execute_futures_order(
+            res = execute_futures_order(
                 client=client,
                 symbol=args.symbol,
                 side=args.side,
@@ -257,6 +302,9 @@ def main():
                 price=args.price,
                 stop_price=args.stop_price,
             )
+            # Check if tracking flag is active and order is tracking eligible
+            if args.track and res and res.get("status") not in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
+                track_order_status(client, args.symbol.upper().strip(), res.get("orderId"))
         except Exception as e:
             logger.error(f"Error executing command-line order: {e}")
             sys.exit(1)
